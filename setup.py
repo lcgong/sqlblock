@@ -44,7 +44,8 @@ setup(
     packages=find_packages("."),
     # package_dir = {"": "."},
     zip_safe = False,
-    install_requires = ["asyncpg>=0.12"],
+    install_requires = ["asyncpg>=0.12",
+                        "pytest-asyncio>=0.6"],
     classifiers = [
         "Development Status :: 2 - Pre-Alpha",
         "Intended Audience :: Developers",
