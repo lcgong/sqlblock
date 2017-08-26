@@ -34,9 +34,9 @@ class TransactionDecorator:
 
         _self_dsn = self.dsn
 
-        def _decorator(func):
-            func_name, func_module = func.__name__, func.__module__
-            func_sig = inspect.signature(func)
+        def _decorator(target_func):
+            func_name, func_module = target_func.__name__, target_func.__module__
+            func_sig = inspect.signature(target_func)
             if _self_dsn not in func_sig.parameters:
                 raise TypeError(f"The parameter '{_self_dsn}' is required "
                                 f" in {func_name} in {func_module}")
@@ -49,12 +49,13 @@ class TransactionDecorator:
                     raise TypeError(f"The parameter '{_self_dsn}' should "
                                     f"declare that '{_self_dsn}=None' "
                                     f"in {func_name} in {func_module} ")
-                func = func
+                partial_func = target_func
             else: # The normal dsn
-                func = functools.partial(func, **{_self_dsn: None})
-                # functools.update_wrapper(newfunc, func)
+                partial_func = functools.partial(target_func, **{_self_dsn: None})
+                _update_wrapper(partial_func, target_func)
 
             async def _sqlblock_wrapper(*args, **kwargs):
+
                 if _self_dsn.startswith('_dsn_'):
                     _dsn_var = kwargs.get(_self_dsn)
                     if _dsn_var is not None:
@@ -89,11 +90,12 @@ class TransactionDecorator:
 
                 await __sqlblk_obj.__enter__()
                 try:
-                    return await func(*args, **kwargs)
+                    # print(55555, args, kwargs)
+                    return await target_func(*args, **kwargs)
                 finally:
                     await __sqlblk_obj.__exit__(*sys.exc_info())
 
-            functools.update_wrapper(_sqlblock_wrapper, func)
+            functools.update_wrapper(_sqlblock_wrapper, partial_func)
             return _sqlblock_wrapper
 
         if len(d_args) == 1 and callable(d_args[0]): # no argument decorator
@@ -110,3 +112,23 @@ def _find_parent_sqlblock(dsn):
 
         frame = frame.f_back
     return None
+
+
+# this copied from functools.update_wrapper but remove the __wrapped__ attribute
+_WRAPPER_ASSIGNMENTS = ('__module__', '__name__', '__qualname__', '__doc__',
+                       '__annotations__')
+_WRAPPER_UPDATES = ('__dict__',)
+def _update_wrapper(wrapper,
+                   wrapped,
+                   assigned = _WRAPPER_ASSIGNMENTS,
+                   updated = _WRAPPER_UPDATES):
+    for attr in assigned:
+        try:
+            value = getattr(wrapped, attr)
+        except AttributeError:
+            pass
+        else:
+            setattr(wrapper, attr, value)
+    for attr in updated:
+        getattr(wrapper, attr).update(getattr(wrapped, attr, {}))
+    return wrapper
