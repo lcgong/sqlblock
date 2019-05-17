@@ -29,6 +29,8 @@ class RecordCursor:
             if not sql_stmt:
                 return
 
+            
+
             await self._sqlblock._conn.executemany(sql_stmt, sql_vals)
             self._many_params = None
             self._params = None
@@ -41,9 +43,12 @@ class RecordCursor:
 
             return
 
+
         sql_stmt, sql_vals = sqltext.get_statment(params=self._params)
         if not sql_stmt:
             return
+            
+        print(777, sql_stmt, sql_vals)
 
         try:
             stmt = await self._sqlblock._conn.prepare(sql_stmt)

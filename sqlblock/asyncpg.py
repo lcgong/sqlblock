@@ -116,6 +116,9 @@ class BaseSQLBlock:
 
         return  self._cursor
 
+    async def __anext__(self):
+        return await self._cursor.__anext__()
+
     def __dset__(self, item_type):
         if self._cursor:
             return self._cursor.__dset__(item_type)
