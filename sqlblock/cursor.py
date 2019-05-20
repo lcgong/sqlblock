@@ -47,9 +47,7 @@ class RecordCursor:
         sql_stmt, sql_vals = sqltext.get_statment(params=self._params)
         if not sql_stmt:
             return
-            
-        print(777, sql_stmt, sql_vals)
-
+        
         try:
             stmt = await self._sqlblock._conn.prepare(sql_stmt)
             records = await stmt.fetch(*sql_vals)
