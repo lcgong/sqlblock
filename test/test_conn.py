@@ -4,13 +4,28 @@ import asyncio
 from sqlblock.sqltext import SQL
 from sqlblock.connection import AsyncPGConnection
 
+import pytest
 
-async def main():
+@pytest.mark.asyncio
+async def test_transaction_1():
   conn = AsyncPGConnection(url="postgresql://postgres@localhost/test")
 
+  @conn.transaction(autocommit=True)
+  async def func0():
+    conn << SQL("select 123 as a ") 
+    r = await conn.fetchfirst()
+    assert r.a == 123
+
+  async with conn:
+    await func0()
+
+@pytest.mark.asyncio
+async def test_transaction():
+  conn = AsyncPGConnection(url="postgresql://postgres@localhost/test")
+  
 
   @conn.transaction(autocommit=True)
-  async def hi():
+  async def func0():
 
     sn = 100
     conn << SQL("""
@@ -45,6 +60,4 @@ async def main():
     print(rows)
 
   async with conn:
-    await hi()
-
-asyncio.run(main())
+    await func0()

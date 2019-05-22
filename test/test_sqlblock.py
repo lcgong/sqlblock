@@ -2,8 +2,28 @@
 
 import pytest
 
-from sqlblock import SQL
-from sqlblock.asyncpg import set_dsn, transaction
+from sqlblock.sqltext import SQL
+from sqlblock.postgres import set_dsn, transaction
+
+
+@pytest.fixture(scope='session')
+def setup_dsn():
+    from sqlblock.postgres import set_dsn
+
+    set_dsn(dsn='db', url="postgresql://postgres@localhost/test")
+
+
+@pytest.fixture(scope='session')
+def event_loop(request, setup_dsn):
+    """
+    To avoid the error that a pending task is attached to a different loop,
+    create an instance of the default event loop for each test case.
+    """
+    import asyncio
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
+
 
 @pytest.mark.asyncio
 @transaction.db
