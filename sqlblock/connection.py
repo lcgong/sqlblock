@@ -17,8 +17,8 @@ from dataclasses import make_dataclass
 class AsyncPGConnection:
     __slots__ = ('_ctxvar', '_pool', '_pool_kwargs')
 
-    def __init__(self, url=None, min_size=10, max_size=10):
-        self._pool_kwargs = dict(dsn=url, min_size=min_size, max_size=max_size)
+    def __init__(self, dsn=None, min_size=10, max_size=10):
+        self._pool_kwargs = dict(dsn=dsn, min_size=min_size, max_size=max_size)
         self._ctxvar = ContextVar('connection')
 
     def transaction(self, *d_args, autocommit=False):
@@ -94,7 +94,7 @@ class AsyncPGConnection:
 
 class SQLBlock:
     __slots__ = ('_conn', '_sqltext', '_cursor', '_row_type',
-                 '_autocommit', '_parent')
+                 '_executed', '_autocommit', '_parent')
 
     def __init__(self, conn, autocommit=False, parent=None):
         self._conn = conn
@@ -104,9 +104,15 @@ class SQLBlock:
         self._cursor = None
         self._row_type = None
         self._sqltext = SQLText()
+        self._executed = False
 
     def join(self, sqltext, frame=sys._getframe(1)):
+        if self._executed:
+            self._sqltext.clear() ## next a new SQL statement
+            self._executed = False
+
         self._sqltext._join(sqltext, frame=frame)
+
         return self
 
     async def fetchfirst(self, **params):
@@ -119,6 +125,8 @@ class SQLBlock:
         sql_stmt, sql_vals = self._sqltext.get_statment(params=params)
         if not sql_stmt:
             return
+
+        self._executed = True
 
         stmt = await self._conn.prepare(sql_stmt)
         record = await stmt.fetchrow(*sql_vals)
@@ -134,6 +142,8 @@ class SQLBlock:
         sql_stmt, sql_vals = self._sqltext.get_statment(params=params)
         if not sql_stmt:
             return _EmptyAsyncIterator()
+
+        self._executed = True
 
         stmt = await self._conn.prepare(sql_stmt)
 
@@ -162,6 +172,8 @@ class SQLBlock:
         sql_stmt, sql_vals = self._sqltext.get_statment(params=params)
         if not sql_stmt:
             return
+
+        self._executed = True
 
         status = await self._conn.execute(sql_stmt, *sql_vals)
         return status

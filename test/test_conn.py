@@ -8,7 +8,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_transaction_1():
-  conn = AsyncPGConnection(url="postgresql://postgres@localhost/test")
+  conn = AsyncPGConnection(dsn="postgresql://postgres@localhost/test")
 
   @conn.transaction(autocommit=True)
   async def func0():
@@ -16,12 +16,16 @@ async def test_transaction_1():
     r = await conn.fetchfirst()
     assert r.a == 123
 
+    conn << SQL("select 456 as a ") 
+    r = await conn.fetchfirst()
+    assert r.a == 456
+
   async with conn:
     await func0()
 
 @pytest.mark.asyncio
 async def test_transaction():
-  conn = AsyncPGConnection(url="postgresql://postgres@localhost/test")
+  conn = AsyncPGConnection(dsn="postgresql://postgres@localhost/test")
   
 
   @conn.transaction(autocommit=True)
@@ -39,12 +43,11 @@ async def test_transaction():
     await func1()
 
     await func2()
+    r = await conn.fetchfirst(no=300)
+    assert r.a == 101 and r.b == 301    
 
     await func1()
 
-    r = await conn.fetchfirst(no=300)
-    assert r.a == 101 and r.b == 301
-    print(r)
 
   @conn.transaction
   async def func1():
