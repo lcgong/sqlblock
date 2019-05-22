@@ -11,23 +11,7 @@ from .sqltext import SQLText
 
 from dataclasses import make_dataclass
 
-_logger = logging.getLogger('sqlblock')
-
-
-def _transaction(conn, coroutine):
-
-    async def wrapper(*args, **kwargs):
-        transaction = conn.transaction()
-        await transaction.start()
-        try:
-            ret_val = await coroutine(*args, **kwargs)
-            await transaction.commit()
-            return ret_val
-        except:
-            transaction.rollback()
-            raise
-
-    return wrapper
+# _logger = logging.getLogger('sqlblock')
 
 
 class AsyncPGConnection:
@@ -46,31 +30,21 @@ class AsyncPGConnection:
 
                 block = ctxvar.get(None)
                 if block is None:
-                    conn = await pool.acquire()
                     try:
+                        conn = await pool.acquire()
                         block = SQLBlock(conn, autocommit=autocommit)
-                        markedToken = ctxvar.set(block)
-                        if not autocommit:
-                            trans_func = _transaction(conn, func)
-                            return await trans_func(*args, **kwargs)
-                        else:
-                            return await func(*args, **kwargs)
+                        return await _scoped_invoke(ctxvar, block,
+                                                    conn, autocommit,
+                                                    func, args, kwargs)
                     finally:
-                        ctxvar.reset(markedToken)
                         await pool.release(conn)
                 else:
                     conn = block._conn
-                    childBlock = SQLBlock(conn, autocommit=autocommit)
-                    
-                    try:
-                        markedToken = ctxvar.set(childBlock)
-                        if not autocommit:
-                            return await _transaction(conn, func)(*args, **kwargs)
-                        else:
-                            return await func(*args, **kwargs)
-                    finally:
-                        ctxvar.reset(markedToken)
+                    childBlock = SQLBlock(conn, parent=block,
+                                          autocommit=autocommit)
 
+                    return await _scoped_invoke(ctxvar, childBlock, conn,
+                                                autocommit, func, args, kwargs)
 
             return update_func_wrapper(_sqlblock_wrapper, func)
 
@@ -118,30 +92,14 @@ class AsyncPGConnection:
         return sqlblock.__aiter__()
 
 
-class AsyncIteratorWrapper:
-    def __init__(self, _iter):
-        self._iter = _iter
-    
-    def __aiter__(self):
-        return self
-    async def __anext__(self):
-        try:
-            return self._iter.__next__() 
-        except StopIteration:
-            raise StopAsyncIteration
-
-class EmptyAsyncIterator:
-    def __aiter__(self):
-        return self
-    async def __anext__(self):
-        raise StopAsyncIteration
-
 class SQLBlock:
-    __slots__ = ('_conn', '_sqltext', '_cursor', '_row_type', '_autocommit')
+    __slots__ = ('_conn', '_sqltext', '_cursor', '_row_type',
+                 '_autocommit', '_parent')
 
-    def __init__(self, conn, autocommit=False):
+    def __init__(self, conn, autocommit=False, parent=None):
         self._conn = conn
         self._autocommit = autocommit
+        self._parent = parent
 
         self._cursor = None
         self._row_type = None
@@ -173,19 +131,16 @@ class SQLBlock:
         return _row_type(**record)
 
     async def fetch(self, **params):
-        print(self._autocommit, self._sqltext)
-
         sql_stmt, sql_vals = self._sqltext.get_statment(params=params)
         if not sql_stmt:
-            return EmptyAsyncIterator()
+            return _EmptyAsyncIterator()
 
         stmt = await self._conn.prepare(sql_stmt)
 
-        
         if self._autocommit:
             # cursor cannot be created outside of a transaction
             records = await stmt.fetch(*sql_vals)
-            self._cursor = AsyncIteratorWrapper(iter(records))
+            self._cursor = _AsyncIteratorWrapper(records.__iter__())
         else:
             self._cursor = stmt.cursor(*sql_vals).__aiter__()
 
@@ -225,3 +180,44 @@ class SQLBlock:
             self._cursor = None
             self._row_type = None
             raise
+
+
+class _AsyncIteratorWrapper:
+    def __init__(self, _iter):
+        self._iter = _iter
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            return self._iter.__next__()
+        except StopIteration:
+            raise StopAsyncIteration
+
+
+class _EmptyAsyncIterator:
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        raise StopAsyncIteration
+
+
+async def _scoped_invoke(ctxvar, block, conn, autocommit, func, args, kwargs):
+    try:
+        saved_point = ctxvar.set(block)
+        if not autocommit:
+            transaction = conn.transaction()
+            await transaction.start()
+            try:
+                ret_val = await func(*args, **kwargs)
+                await transaction.commit()
+                return ret_val
+            except:
+                transaction.rollback()
+                raise
+        else:
+            return await func(*args, **kwargs)
+    finally:
+        ctxvar.reset(saved_point)
