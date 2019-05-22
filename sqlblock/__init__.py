@@ -23,4 +23,4 @@ def do_something(self, arg):
 """
 
 from .sqltext import SQL
-from .asyncpg import set_dsn, transaction
+from .postgres import set_dsn, transaction
