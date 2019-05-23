@@ -10,9 +10,7 @@ from contextvars import ContextVar
 from .sqltext import SQLText
 
 from dataclasses import make_dataclass
-
-# _logger = logging.getLogger('sqlblock')
-
+from enum import Enum
 
 class AsyncPGConnection:
     __slots__ = ('_ctxvar', '_pool', '_pool_kwargs')
@@ -21,7 +19,10 @@ class AsyncPGConnection:
         self._pool_kwargs = dict(dsn=dsn, min_size=min_size, max_size=max_size)
         self._ctxvar = ContextVar('connection')
 
-    def transaction(self, *d_args, autocommit=False):
+    def clone(self):
+        return AsyncPGConnection(**self._pool_kwargs)
+
+    def transaction(self, *d_args, renew=False, autocommit=False):
         def _sqlblk_decorator(func):
 
             async def _sqlblock_wrapper(*args, **kwargs):
@@ -29,7 +30,7 @@ class AsyncPGConnection:
                 pool = self._pool
 
                 block = ctxvar.get(None)
-                if block is None:
+                if block is None or renew:
                     try:
                         conn = await pool.acquire()
                         block = SQLBlock(conn, autocommit=autocommit)
@@ -68,7 +69,7 @@ class AsyncPGConnection:
     def __lshift__(self, sqltext):
         sqlblock: SQLBlock = self._ctxvar.get()
 
-        sqlblock.join(sqltext, frame=sys._getframe(1))
+        sqlblock.join(sqltext, vars=sys._getframe(1).f_locals)
 
         return self
 
@@ -92,9 +93,14 @@ class AsyncPGConnection:
         return sqlblock.__aiter__()
 
 
+class BlockState(Enum):
+    PENDING     = 0
+    EXECUTED    = 1
+    EXHAUSTED   = 2
+
 class SQLBlock:
     __slots__ = ('_conn', '_sqltext', '_cursor', '_row_type',
-                 '_executed', '_autocommit', '_parent')
+                 '_state', '_autocommit', '_parent', '_prepared')
 
     def __init__(self, conn, autocommit=False, parent=None):
         self._conn = conn
@@ -104,14 +110,16 @@ class SQLBlock:
         self._cursor = None
         self._row_type = None
         self._sqltext = SQLText()
-        self._executed = False
+        self._state = BlockState.PENDING
+        self._prepared = None
 
-    def join(self, sqltext, frame=sys._getframe(1)):
-        if self._executed:
+    def join(self, sqltext, vars=sys._getframe(1).f_locals):
+        if self._state != BlockState.PENDING:
             self._sqltext.clear() ## next a new SQL statement
-            self._executed = False
+            self._state = BlockState.PENDING
+            self._prepared = None
 
-        self._sqltext._join(sqltext, frame=frame)
+        self._sqltext._join(sqltext, vars=vars)
 
         return self
 
@@ -126,8 +134,8 @@ class SQLBlock:
         if not sql_stmt:
             return
 
-        self._executed = True
-
+        self._state = BlockState.EXECUTED
+        
         stmt = await self._conn.prepare(sql_stmt)
         record = await stmt.fetchrow(*sql_vals)
         if record is None:
@@ -139,13 +147,16 @@ class SQLBlock:
         return _row_type(**record)
 
     async def fetch(self, **params):
-        sql_stmt, sql_vals = self._sqltext.get_statment(params=params)
-        if not sql_stmt:
-            return _EmptyAsyncIterator()
+        if self._prepared is None:
+            sql_stmt, sql_vals = self._sqltext.get_statment(params=params)
+            if not sql_stmt:
+                return _EmptyAsyncIterator()
 
-        self._executed = True
+            stmt = await self._conn.prepare(sql_stmt)
 
-        stmt = await self._conn.prepare(sql_stmt)
+            self._prepared = (stmt, sql_vals)
+        else:
+            stmt, sql_vals = self._prepared
 
         if self._autocommit:
             # cursor cannot be created outside of a transaction
@@ -156,6 +167,8 @@ class SQLBlock:
 
         self._row_type = make_dataclass(
             "Rec", [a.name for a in stmt.get_attributes()])
+
+        self._state = BlockState.EXECUTED
 
         return self
 
@@ -173,22 +186,29 @@ class SQLBlock:
         if not sql_stmt:
             return
 
-        self._executed = True
-
         status = await self._conn.execute(sql_stmt, *sql_vals)
+        
+        self._state = BlockState.EXECUTED
+
         return status
 
     def __aiter__(self):
+        if self._state == BlockState.EXHAUSTED:
+            self._state = BlockState.PENDING
         return self
 
     async def __anext__(self):
-        if self._cursor is None:
-            raise StopAsyncIteration
+        if  self._state == BlockState.PENDING:
+            await self.fetch()
+        else:
+            if self._state == BlockState.EXHAUSTED:
+                raise StopAsyncIteration
 
         try:
             record = await self._cursor.__anext__()
             return self._row_type(**record)
         except StopAsyncIteration:
+            self._state = BlockState.EXHAUSTED
             self._cursor = None
             self._row_type = None
             raise

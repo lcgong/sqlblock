@@ -16,7 +16,7 @@ class SQLText:
             return self
 
         elif isinstance(sqltext, str):
-            return self._join(sqltext, sep='', frame=sys._getframe(1))
+            return self._join(sqltext, sep='', vars=sys._getframe(1).f_locals)
 
         else:
             raise TypeError(type(sqltext))
@@ -28,7 +28,7 @@ class SQLText:
             newone._segments += sqltext._segments
 
         elif isinstance(sqltext, str):
-            segments = _sqlstr_parse(sqltext, sys._getframe(1))
+            segments = _sqlstr_parse(sqltext, sys._getframe(1).f_locals)
 
             newone = SQLText()
             newone._segments += self._segments
@@ -42,33 +42,32 @@ class SQLText:
 
     def __rshift__(self, sqlblock):
         if hasattr(sqlblock, '__lshift__'):
-            # sqlblock._sqltext.clear()
             sqlblock.__lshift__(self)
             return sqlblock
 
         raise ValueError("SQL(' ') >> sqlblock")
 
-    def _join(self, *sqltexts, sep='', frame=sys._getframe(1)):
+    def _join(self, *sqltexts, sep='', vars):
         if not sqltexts: return
 
         sql_text_iter = iter(sqltexts)
         sqltext = next(sql_text_iter, None)
 
         if isinstance(sqltext, str):
-            segments = _sqlstr_parse(sqltext, frame)
+            segments = _sqlstr_parse(sqltext, vars)
         elif isinstance(sqltext, SQLText):
             segments = [] + sqltext._segments
         else:
             raise TypeError()
 
         if segments and self._segments:
-            self._segments.append(SQLSegment(sep, frame))
+            self._segments.append(SQLSegment(sep, vars))
 
         self._segments += segments
 
         for sqltext in sql_text_iter:
             if isinstance(sqltext, str):
-                segments = _sqlstr_parse(sqltext, frame)
+                segments = _sqlstr_parse(sqltext, vars)
             elif isinstance(sqltext, SQLText):
                 segments = [] + sqltext._segments
             else:
@@ -76,7 +75,7 @@ class SQLText:
 
             # segments = qlstr_parse(sqlstr, frame)
             if segments:
-                self._segments.append(SQLSegment(sep, frame))
+                self._segments.append(SQLSegment(sep, vars))
 
             self._segments += segments
 
@@ -122,7 +121,7 @@ def eval_param_vals(params, placeholders):
 
     for seg in placeholders:
         localvars = {}
-        localvars.update(seg.frame.f_locals)
+        localvars.update(seg.vars)
         if params:
             localvars.update(params)
 
@@ -132,13 +131,14 @@ def eval_param_vals(params, placeholders):
     return sql_vals
 
 class SQLSegmentBase:
-    def __init__(self, frame):
+    def __init__(self, vars):
         self.offset = (0, 0) # lineno, charpos at line
-        self.frame = frame   # frame.f_lineno frame.f_code.co_filename
+        self.vars = vars   # frame.f_lineno frame.f_code.co_filename
 
 class SQLSegment(SQLSegmentBase):
-    def __init__(self, text, frame):
-        super().__init__(frame)
+
+    def __init__(self, text, vars):
+        super().__init__(vars)
         self.text = text
 
         # compute the offset of this segment
@@ -153,8 +153,8 @@ class SQLSegment(SQLSegmentBase):
         return f"SQLSegment(text='{self.text}', offset={self.offset})"
 
 class SQLPlaceholder(SQLSegmentBase):
-    def __init__(self, field_name, value, frame):
-        super().__init__(frame)
+    def __init__(self, field_name, value, vars):
+        super().__init__(vars)
         self.value = value
         self.field_name = field_name
 
@@ -164,29 +164,35 @@ class SQLPlaceholder(SQLSegmentBase):
 
 
 _formatter = string.Formatter()
-def _sqlstr_parse(sqlstr, frame):
+def _sqlstr_parse(sqlstr, vars):
+    vars = dict(vars)
     segments = []
-    for text, field_name, format_spec, conversion in _formatter.parse(sqlstr):
-        segments.append(SQLSegment(text, frame))
+    for text, field_name, _, _ in _formatter.parse(sqlstr):
+        segments.append(SQLSegment(text, vars))
 
         if field_name:
             try:
-                val = eval(field_name, None, frame.f_locals)
+                val = eval(field_name, None, vars)
             except NameError as exc:
                 val = exc
 
             if isinstance(val, SQLText):
                 segments += val._segments
             else:
-                seg = SQLPlaceholder(field_name, val, frame)
+                seg = SQLPlaceholder(field_name, val, vars)
                 segments.append(seg)
 
     return segments
 
 
-def SQL(*sqlstrs, sep=''):
+def SQL(*sqlstrs, sep='', vars=None):
+    
+    if vars is None:
+        vars = sys._getframe(1).f_locals
+
     sqltext = SQLText()
-    sqltext._join(*sqlstrs, sep=sep, frame=sys._getframe(1))
+    sqltext._join(*sqlstrs, sep=sep, vars=vars)
+    
     return sqltext
 
 __all__ = ['SQL']

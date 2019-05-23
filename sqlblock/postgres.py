@@ -84,7 +84,7 @@ class BaseSQLBlock:
         return False
 
     def __lshift__(self, sqltext):
-        self._sqltext._join(sqltext, frame=sys._getframe(1))
+        self._sqltext._join(sqltext, vars=sys._getframe(1).f_locals)
         return self
 
     def __await__(self):

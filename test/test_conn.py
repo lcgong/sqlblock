@@ -6,22 +6,50 @@ from sqlblock.connection import AsyncPGConnection
 
 import pytest
 
+# @pytest.mark.asyncio
+# async def test_transaction_1():
+#   conn = AsyncPGConnection(dsn="postgresql://postgres@localhost/test")
+
+#   @conn.transaction(autocommit=True)
+#   async def func0():
+#     conn << SQL("select 123 as a ") 
+#     r = await conn.fetchfirst()
+#     assert r.a == 123
+
+#     conn << SQL("select 456 as a ") 
+#     r = await conn.fetchfirst()
+#     assert r.a == 456
+
+#   async with conn:
+#     await func0()
+
 @pytest.mark.asyncio
-async def test_transaction_1():
+async def test_iteration():
   conn = AsyncPGConnection(dsn="postgresql://postgres@localhost/test")
-
+  
   @conn.transaction(autocommit=True)
-  async def func0():
-    conn << SQL("select 123 as a ") 
-    r = await conn.fetchfirst()
-    assert r.a == 123
+  async def func():
 
-    conn << SQL("select 456 as a ") 
-    r = await conn.fetchfirst()
-    assert r.a == 456
+    SQL("SELECT * FROM (VALUES")  >> conn
+
+    n = 5
+    for i in range(1, n):
+      SQL("({i}::INTEGER),") >> conn
+    SQL("({n})") >> conn
+
+    SQL(") AS t(a);") >> conn
+
+    rows = [r async for r in conn]
+    rows += [r async for r in conn]
+    rows += [r async for r in conn]
+    
+    assert len(rows) == 15
+
+    assert [r.a for r in rows][0:5] == [i for i in range(1, 6)]
 
   async with conn:
-    await func0()
+    await func()
+
 
 @pytest.mark.asyncio
 async def test_transaction():

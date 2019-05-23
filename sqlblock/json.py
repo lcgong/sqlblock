@@ -7,7 +7,7 @@ from decimal import Decimal
 from dataclasses import is_dataclass, asdict as dataclass_asdict
 
 
-def loads(s):
+def json_loads(s):
 	"""Deserialize s to a python object"""
 	return json.loads(s)
 

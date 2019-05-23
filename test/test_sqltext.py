@@ -41,3 +41,16 @@ def test_sqltext2():
     assert vals[4] == 31
 
     print(stmt, vals)
+
+def test_sqltext3():
+    s0 = SQL('[{age}]', vars=dict(age=18))
+    s0 += SQL('[{b}]', vars=dict(b=100))
+    stmt, vals = s0.get_statment()
+    assert stmt == '[$1][$2]' and vals == [18,100]
+
+def test_sqltext4():
+    s = SQL()
+    for i in range(1, 5):
+      s += SQL("[{i+1}]")
+    _, vals = s.get_statment()
+    assert vals == [2,3,4,5]
