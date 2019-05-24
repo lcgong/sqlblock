@@ -1,138 +1,263 @@
-# -*- coding: utf-8 -*-
-
 import logging
-_logger = logging.getLogger(__name__)
+
+from asyncpg import create_pool
+import inspect
 
 import sys
-import asyncpg
-
+from inspect import iscoroutinefunction
+from functools import update_wrapper as update_func_wrapper
+from contextvars import ContextVar
 from .sqltext import SQLText
-from .cursor import RecordCursor
-from .decorator import TransactionDecoratorFactory
 
-_conn_pools = {}
-_datasources = {}
+from dataclasses import make_dataclass
+from enum import Enum
 
-def set_dsn(dsn='DEFAULT', url=None, min_size=10, max_size=10):
-    _datasources[dsn] = dict(dsn=url, min_size=min_size, max_size=max_size)
+class AsyncPGConnection:
+    __slots__ = ('_ctxvar', '_pool', '_pool_kwargs')
 
-async def _get_pool(name):
-    pool = _conn_pools.get(name)
-    if pool is not None:
-        return pool
+    def __init__(self, dsn=None, min_size=10, max_size=10):
+        self._pool_kwargs = dict(dsn=dsn, min_size=min_size, max_size=max_size)
+        self._ctxvar = ContextVar('connection')
 
-    ds = _datasources.get(name)
-    if ds is None:
-        raise NameError('No dsn found: ' + name)
+    def clone(self):
+        return AsyncPGConnection(**self._pool_kwargs)
 
-    try:
-        pool = await asyncpg.create_pool(**ds)
-        _conn_pools[name] = pool
-        return pool
-    except Exception as exc:
-        _logger.error(str(exc))
+    def transaction(self, *d_args, renew=False, autocommit=False):
+        """Decorate the function to access datasbase.
 
+        :param renew: Force the function with a new connection, default is False.
+        :param autocommit: autocommit
+        """
+        def _sqlblk_decorator(func):
 
-async def close():
-    await asyncio.gather(*(p.close() for p in _conn_pools.values()))
+            async def _sqlblock_wrapper(*args, **kwargs):
+                ctxvar = self._ctxvar
+                pool = self._pool
 
+                block = ctxvar.get(None)
+                if block is None or renew:
+                    try:
+                        conn = await pool.acquire()
+                        block = SQLBlock(conn, autocommit=autocommit)
+                        return await _scoped_invoke(ctxvar, block,
+                                                    conn, autocommit,
+                                                    func, args, kwargs)
+                    finally:
+                        await pool.release(conn)
+                else:
+                    conn = block._conn
+                    childBlock = SQLBlock(conn, parent=block,
+                                          autocommit=autocommit)
 
+                    return await _scoped_invoke(ctxvar, childBlock, conn,
+                                                autocommit, func, args, kwargs)
 
-class BaseSQLBlock:
-    __tuple__ = ('dsn', '_sqltext', '_cursor',
-                 '_parent_sqlblk', '_func_module', '_func_name')
+            return update_func_wrapper(_sqlblock_wrapper, func)
 
-    def __init__(self, dsn='DEFAULT',
-                parent=None, _func_name=None, _func_module=None):
+        if len(d_args) > 0 and iscoroutinefunction(d_args[0]):
+            # no argument decorator
+            return _sqlblk_decorator(d_args[0])
+        else:
+            return lambda f: _sqlblk_decorator(f)
 
-        self.dsn = dsn
-        self._parent_sqlblk = parent
-        self._func_name = _func_name
-        self._func_module = _func_module
-
-        self._cursor = RecordCursor(self)
-        self._sqltext = SQLText()
-
-
-    async def __enter__(self):
-        if self._parent_sqlblk:
-            self._conn = self._parent_sqlblk._conn
-            return self
-
-        pool = await _get_pool(self.dsn)
-        if pool:
-            self._conn = await pool.acquire()
-            self._transaction = self._conn.transaction()
-            await self._transaction.start()
+    async def __aenter__(self):
+        """ startup the connection pool """
+        self._pool = await create_pool(**self._pool_kwargs)
 
         return self
 
-    async def __exit__ (self, etyp, exc_val, tb):
-        if self._parent_sqlblk:
-            return False
-
-        if exc_val :
-            await self._transaction.rollback()
-        else:
-            await self._transaction.commit()
-
-        if self._conn:
-            pool = await _get_pool(self.dsn)
-            await pool.release(self._conn)
-            self._conn = None
-
-        return False
+    async def __aexit__(self, etyp, exc_val, tb):
+        """ gracefull shutdown the connection pool """
+        await self._pool.close()
+        self._pool = None
 
     def __lshift__(self, sqltext):
-        self._sqltext._join(sqltext, vars=sys._getframe(1).f_locals)
+        sqlblock: SQLBlock = self._ctxvar.get()
+
+        sqlblock.join(sqltext, vars=sys._getframe(1).f_locals)
+
         return self
 
+    async def execute(self, **params):
+        sqlblock: SQLBlock = self._ctxvar.get()
+        return await sqlblock.fetch(**params)
+
+
     def __await__(self):
-        return self.__call__().__await__()
+        sqlblock: SQLBlock = self._ctxvar.get()
+        return sqlblock.fetch().__await__()
 
-    async def __call__(self, *many_params, **params):
-        """
-        db(param1=1, param2=2, .... )
-        executemany:
-            db([dict(param1=1, param2=2, ..), dict(), ...])
-        """
-        if not many_params:
-            self._cursor._params = params
-            await self._cursor.execute()
-            return self
-        else:
-            assert len(many_params) == 1
 
-            self._cursor._many_params = many_params[0]
-            await self._cursor.execute()
+    async def first(self, **params):
+        sqlblock: SQLBlock = self._ctxvar.get()
+        return await sqlblock.fetch_first(**params)
 
     def __aiter__(self):
-        return  self._cursor
+        sqlblock: SQLBlock = self._ctxvar.get()
+        return sqlblock.__aiter__()
 
-    def __iter__(self):
-        if self._sqltext:
-            self._sqltext.clear()
-            raise ValueError(f"There is a sqltext need to 'await {self.dsn}'")
 
-        return  self._cursor
+class BlockState(Enum):
+    PENDING     = 0
+    EXECUTED    = 1
+    EXHAUSTED   = 2
+
+def make_record_type(stmt):
+    return make_dataclass("Rec", [a.name for a in stmt.get_attributes()])
+
+class SQLBlock:
+    __slots__ = ('_conn', '_sqltext', '_cursor', '_row_type',
+                 '_state', '_autocommit', '_parent', '_statment')
+
+    def __init__(self, conn, autocommit=False, parent=None):
+        self._conn = conn
+        self._autocommit = autocommit
+        self._parent = parent
+
+        self._cursor = None
+        self._row_type = None
+        self._sqltext = SQLText()
+        self._state = BlockState.PENDING
+        self._statment = None
+
+    def join(self, sqltext, vars=sys._getframe(1).f_locals):
+        if self._state != BlockState.PENDING:
+            self._sqltext.clear() ## next a new SQL statement
+            self._state = BlockState.PENDING
+            self._statment = None
+
+        self._sqltext._join(sqltext, vars=vars)
+
+        return self
+
+    async def fetch_first(self, **params):
+        """Execute the statement and return the first record.
+
+        :param params: Query arguments
+        :return: The first row as a :class:`Rec` instance.
+        """
+        
+        sql_stmt, sql_vals = self._sqltext.get_statment(params=params)
+        if not sql_stmt:
+            return
+
+        stmt = await self._conn.prepare(sql_stmt)
+        record = await stmt.fetchrow(*sql_vals)
+        self._state = BlockState.EXHAUSTED
+        
+        if record is not None:
+            record_type = make_record_type(stmt)
+            return record_type(**record)
+
+    async def fetch(self, **params):
+
+        sql_stmt, sql_vals = self._sqltext.get_statment(params=params)
+        if not sql_stmt:
+            return
+
+
+        conn = self._conn
+        stmt = await conn.prepare(sql_stmt)
+
+        if self._autocommit:
+            # cursor cannot be created outside of a transaction
+            records = await stmt.fetch(*sql_vals)
+            self._cursor = _IteratoAsyncrWrapper(records.__iter__())
+        else:
+            self._cursor = await _fetch_cursor(stmt, sql_vals)
+
+        self._statment = stmt
+        self._row_type = make_dataclass(
+            "Rec", [a.name for a in stmt.get_attributes()])
+
+        self._state = BlockState.EXECUTED
+
+        return self
+
+    def get_statusmsg(self):
+        return self._statment.get_statusmsg()
+
+    def __aiter__(self):
+        if self._state == BlockState.EXHAUSTED:
+            self._state = BlockState.PENDING
+        return self
 
     async def __anext__(self):
-        return await self._cursor.__anext__()
-
-    def __dset__(self, item_type):
-        if self._cursor:
-            return self._cursor.__dset__(item_type)
-
-        return dset(item_type)()
-
-    def __repr__(self):
-
-        if self._func_name:
-            func_str = f"against '{self._func_name}' "
-            func_str += f"in '{self._func_module}'"
+        if  self._state == BlockState.PENDING:
+            await self.fetch()
         else:
-            func_str = ""
+            if self._state == BlockState.EXHAUSTED:
+                raise StopAsyncIteration
 
-        return f"<SQLBlock dsn='{self.dsn}' " + func_str +  f" at 0x{id(self):x}>"
+        try:
+            record = await self._cursor.__anext__()
+            return self._row_type(**record)
+        except StopAsyncIteration:
+            self._state = BlockState.EXHAUSTED
+            self._cursor = None
+            self._row_type = None
+            raise
 
-transaction = TransactionDecoratorFactory(BaseSQLBlock)
+async def _fetch_cursor(stmt, sql_vals):
+    _iter = stmt.cursor(*sql_vals).__aiter__()
+    try:
+        this_one = await _iter.__anext__()
+        return _ThisOneAsyncIterator(_iter, this_one)
+    except StopAsyncIteration:
+        return _EmptyAsyncrIterator()
+
+class _ThisOneAsyncIterator:
+
+    def __init__(self, _iter, this_one):
+        self._iter = _iter
+        self._this_one = this_one
+
+    async def __anext__(self):
+        this_one = self._this_one
+        if this_one is None:
+            raise StopAsyncIteration
+
+        try:
+            self._this_one = await self._iter.__anext__()
+        except StopAsyncIteration:
+            self._this_one = None
+        
+        return this_one
+
+class _IteratoAsyncrWrapper:
+
+    def __init__(self, _iter):
+        self._iter = _iter
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            return self._iter.__next__()
+        except StopIteration:
+            raise StopAsyncIteration
+
+class _EmptyAsyncrIterator:
+
+    async def __anext__(self):
+        raise StopAsyncIteration
+
+
+async def _scoped_invoke(ctxvar, block, conn, autocommit, func, args, kwargs):
+    try:
+        saved_point = ctxvar.set(block)
+        if not autocommit:
+            transaction = conn.transaction()
+            await transaction.start()
+            try:
+                ret_val = await func(*args, **kwargs)
+                await transaction.commit()
+                return ret_val
+            except:
+                await transaction.rollback()
+                raise
+        else:
+            return await func(*args, **kwargs)
+    finally:
+        ctxvar.reset(saved_point)
