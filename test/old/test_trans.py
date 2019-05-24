@@ -8,6 +8,7 @@ from sqlblock import SQL
 # def setup_module(module):
 #     set_dsn(dsn='db2', url="postgresql://postgres@localhost/test")
 
+
 @pytest.fixture(scope='session')
 def setup_dsn():
     from sqlblock.old.postgres import set_dsn
@@ -37,15 +38,18 @@ async def func1(db):
 
     await (db << "SELECT 12 as sn")
 
+
 @transaction.db
 async def func2(db):
     await (db << "SELECT 21 as sn")
 
     # await func3()
 
+
 @transaction.db2
 async def func3(db2):
     await (db2 << "SELECT 31 as sn")
+
 
 @pytest.mark.asyncio
 async def test_trans():

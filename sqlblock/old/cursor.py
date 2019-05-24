@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import logging
-_logger = logging.getLogger(__name__)
 
 from collections import namedtuple
 from ..sqltext import SQLText
+
+_logger = logging.getLogger(__name__)
+
 
 class RecordCursor:
 
@@ -25,11 +27,10 @@ class RecordCursor:
         self._sqlblock._sqltext = SQLText()
 
         if self._many_params is not None:
-            sql_stmt, sql_vals = sqltext.get_statment(many_params=self._many_params)
+            sql_stmt, sql_vals = sqltext.get_statment(
+                many_params=self._many_params)
             if not sql_stmt:
                 return
-
-            
 
             await self._sqlblock._conn.executemany(sql_stmt, sql_vals)
             self._many_params = None
@@ -43,11 +44,10 @@ class RecordCursor:
 
             return
 
-
         sql_stmt, sql_vals = sqltext.get_statment(params=self._params)
         if not sql_stmt:
             return
-        
+
         try:
             stmt = await self._sqlblock._conn.prepare(sql_stmt)
             records = await stmt.fetch(*sql_vals)

@@ -2,7 +2,10 @@
 import pytest
 
 import logging
-logging.basicConfig(format='[%(asctime)s %(levelname)s] %(message)s', datefmt="%M:%S", level=logging.DEBUG)
+logging.basicConfig(
+    format='[%(asctime)s %(levelname)s] %(message)s',
+    datefmt="%M:%S",
+    level=logging.DEBUG)
 
 # @pytest.fixture(scope='session')
 # def setup_dsn():

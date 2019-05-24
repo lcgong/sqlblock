@@ -1,20 +1,23 @@
 # -*- coding: utf-8 -*-
 
 import logging
-_logger = logging.getLogger(__name__)
-
 import sys
+
 import asyncpg
 
 from ..sqltext import SQLText
 from .cursor import RecordCursor
 from .decorator import TransactionDecoratorFactory
 
+_logger = logging.getLogger(__name__)
+
 _conn_pools = {}
 _datasources = {}
 
+
 def set_dsn(dsn='DEFAULT', url=None, min_size=10, max_size=10):
     _datasources[dsn] = dict(dsn=url, min_size=min_size, max_size=max_size)
+
 
 async def _get_pool(name):
     pool = _conn_pools.get(name)
@@ -37,13 +40,12 @@ async def close():
     await asyncio.gather(*(p.close() for p in _conn_pools.values()))
 
 
-
 class BaseSQLBlock:
     __tuple__ = ('dsn', '_sqltext', '_cursor',
                  '_parent_sqlblk', '_func_module', '_func_name')
 
     def __init__(self, dsn='DEFAULT',
-                parent=None, _func_name=None, _func_module=None):
+                 parent=None, _func_name=None, _func_module=None):
 
         self.dsn = dsn
         self._parent_sqlblk = parent
@@ -52,7 +54,6 @@ class BaseSQLBlock:
 
         self._cursor = RecordCursor(self)
         self._sqltext = SQLText()
-
 
     async def __enter__(self):
         if self._parent_sqlblk:
@@ -67,11 +68,11 @@ class BaseSQLBlock:
 
         return self
 
-    async def __exit__ (self, etyp, exc_val, tb):
+    async def __exit__(self, etyp, exc_val, tb):
         if self._parent_sqlblk:
             return False
 
-        if exc_val :
+        if exc_val:
             await self._transaction.rollback()
         else:
             await self._transaction.commit()
@@ -107,14 +108,14 @@ class BaseSQLBlock:
             await self._cursor.execute()
 
     def __aiter__(self):
-        return  self._cursor
+        return self._cursor
 
     def __iter__(self):
         if self._sqltext:
             self._sqltext.clear()
             raise ValueError(f"There is a sqltext need to 'await {self.dsn}'")
 
-        return  self._cursor
+        return self._cursor
 
     async def __anext__(self):
         return await self._cursor.__anext__()
@@ -133,6 +134,7 @@ class BaseSQLBlock:
         else:
             func_str = ""
 
-        return f"<SQLBlock dsn='{self.dsn}' " + func_str +  f" at 0x{id(self):x}>"
+        return f"<SQLBlock dsn='{self.dsn}' {func_str} at 0x{id(self):x}>"
+
 
 transaction = TransactionDecoratorFactory(BaseSQLBlock)

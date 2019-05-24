@@ -8,6 +8,7 @@ import os
 import sys
 from setuptools.command.test import test as TestCommand
 
+
 class PyTest(TestCommand):
     test_package_name = 'MyMainPackage'
 
@@ -18,7 +19,7 @@ class PyTest(TestCommand):
             '--ignore=build',
             '--cov=domainics',
             '--cov-report=term-missing',
-            # '--pep8',
+            '--pep8',
         ]
         extra_args = os.environ.get('PYTEST_EXTRA_ARGS')
         if extra_args is not None:
@@ -33,9 +34,10 @@ class PyTest(TestCommand):
         errno = pytest.main(self.test_args)
         sys.exit(errno)
 
+
 setup(
     name='sqlblock',
-    version='0.1.0',
+    version='0.5.0',
     license="BSD",
     description='A sql context',
     author='Chenggong Lyu',
@@ -43,28 +45,29 @@ setup(
     url='https://github.com/lcgong/sqlblock',
     packages=find_packages("."),
     # package_dir = {"": "."},
-    zip_safe = False,
-    install_requires = ["asyncpg>=0.12",
-                        "pytest-asyncio>=0.6"],
-    classifiers = [
+    zip_safe=False,
+    install_requires=["asyncpg>=0.18.3",
+                      ],
+    classifiers=[
         "Development Status :: 2 - Pre-Alpha",
         "Intended Audience :: Developers",
-        "License :: OSI Approved :: BSD License",
+        "License :: OSI Approved :: MIT License",
         "Operating System :: Unix",
         "Operating System :: POSIX",
         "Operating System :: Microsoft :: Windows",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: Implementation :: CPython",
         "Topic :: Utilities",
-        ],
+    ],
     test_suite='test',
     tests_require=[
         'pytest',
         'pytest-pep8',
         'pytest-cov',
-        ],
+        'pytest-asyncio'
+    ],
     cmdclass={'test': PyTest},
 
-    )
+)

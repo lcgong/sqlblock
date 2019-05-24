@@ -8,12 +8,12 @@ from dataclasses import is_dataclass, asdict as dataclass_asdict
 
 
 def json_loads(s):
-	"""Deserialize s to a python object"""
-	return json.loads(s)
+    """Deserialize s to a python object"""
+    return json.loads(s)
 
 
 def json_dumps(obj):
-	return json.dumps(obj, cls=EnhancedJSONEncoder)
+    return json.dumps(obj, cls=EnhancedJSONEncoder)
 
 
 class EnhancedJSONEncoder(json.JSONEncoder):
@@ -23,20 +23,20 @@ class EnhancedJSONEncoder(json.JSONEncoder):
 
         if isinstance(obj, datetime.datetime):
             return obj.isoformat()
-        
+
         if isinstance(obj, datetime.date):
             return obj.isoformat()
-        
+
         if isinstance(obj, datetime.timedelta):
             return (datetime.datetime.min + obj).time().isoformat()
-        
-        if isinstance(obj, (Decimal)) :
+
+        if isinstance(obj, (Decimal)):
             return float(obj)
-        
+
         if isinstance(obj, complex):
-            return [obj.real, obj.imag]            
-        
+            return [obj.real, obj.imag]
+
         if hasattr(obj, '__json_object__'):
             return obj.__json_object__()
-        
+
         return json.JSONEncoder.default(self, obj)

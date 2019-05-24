@@ -32,17 +32,20 @@ async def test_func_rshift(db, event_loop):
     SELECT 1 as sn, 'tom' as name
     """) >> db
     await db
-    for r in db: print(r)
+    for r in db:
+        print(r)
 
     SQL("""
     SELECT 1 as sn, 'tom' as name
     """) >> db
-    for r in await db: print(r)
+    for r in await db:
+        print(r)
 
     SQL("""
     SELECT 1 as sn, 'tom' as name
     """) >> db
-    async for r in db: print(r)
+    async for r in db:
+        print(r)
 
     sn = 10
     SQL("""
@@ -55,11 +58,11 @@ async def test_func_rshift(db, event_loop):
     """) >> db
     await db(sn=20)
 
-
     SQL("""
     SELECT {sn}::integer as sn, 'tom' as name
     """) >> db
     await db([dict(sn=200), dict(sn=201)])
+
 
 @pytest.mark.asyncio
 @transaction.db
@@ -68,9 +71,10 @@ async def test_func_rshift_exc1(db, event_loop):
     SELECT 1 as sn, 'tom' as name
     """) >> db
     # await db
-    with pytest.raises(ValueError): # need to await db
+    with pytest.raises(ValueError):  # need to await db
         for r in db:
             print(r)
+
 
 @pytest.mark.asyncio
 @transaction.db
@@ -102,7 +106,8 @@ async def test_func1(db, event_loop):
         # dbconn << f""
         await db
 
-    data = [{"sn":4, "name":'d'}, {"sn":5, "name":'e'}, {"sn":6, "name":'f'}]
+    data = [{"sn": 4, "name": 'd'}, {
+        "sn": 5, "name": 'e'}, {"sn": 6, "name": 'f'}]
     db << "INSERT INTO test_123 (sn, name) VALUES ({sn}, {name})"
     await db(data)
 

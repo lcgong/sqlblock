@@ -38,7 +38,6 @@ async def test_demo(conn):
             SQL("INSERT INTO tmp_tbl (sn) VALUES ({100 + i}) ") >> conn
             await conn
 
-
     async with conn:
         await helloworld()
 
@@ -117,7 +116,7 @@ async def test_context_2(conn):
             SQL("({n}::INTEGER)") >> conn
         SQL(") AS t(a);") >> conn
 
-        await conn.execute(i=10, n=20) # 单独设置将覆盖前面的上下文定义的变量
+        await conn.execute(i=10, n=20)  # 单独设置将覆盖前面的上下文定义的变量
 
         assert [r.a async for r in conn] == [10, 10, 10, 20]
 
@@ -202,6 +201,7 @@ async def test_transaction(conn):
 @pytest.mark.asyncio
 async def test_async_task(conn):
     background_task = None
+
     @conn.transaction
     async def foreground():
         SQL("SELECT 1 AS sn") >> conn
@@ -209,13 +209,13 @@ async def test_async_task(conn):
         nonlocal background_task
         background_task = asyncio.create_task(background())
 
-    # 作为后台任务，必须是独立的连接，不能和原来调用共享连接。 
+    # 作为后台任务，必须是独立的连接，不能和原来调用共享连接。
     # 当遇到下面错误时，极有可能是这个原因
-    # asyncpg.exceptions._base.InterfaceError: 
+    # asyncpg.exceptions._base.InterfaceError:
     # cannot use Connection.transaction() in a manually started transaction
     @conn.transaction(renew=True)
     async def background():
-        await asyncio.sleep(0.1) # 模拟func执行后，才继续进行的后台任务
+        await asyncio.sleep(0.1)  # 模拟func执行后，才继续进行的后台任务
 
         SQL("SELECT 1234 AS sn") >> conn
         return (await conn.first()).sn
@@ -223,6 +223,7 @@ async def test_async_task(conn):
     await foreground()
 
     await asyncio.gather(background_task)
+
 
 @pytest.mark.asyncio
 async def test_dirty_read(conn):
@@ -233,7 +234,7 @@ async def test_dirty_read(conn):
         assert (await conn.first()).sn == 1
 
         looked = await lookup()
-        assert looked == 1234 
+        assert looked == 1234
 
     @conn.transaction(renew=True, autocommit=True)
     async def lookup():
@@ -241,5 +242,3 @@ async def test_dirty_read(conn):
         return (await conn.first()).sn
 
     await func()
-
-

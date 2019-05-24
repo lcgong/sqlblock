@@ -1,5 +1,7 @@
-import sys, string
+import sys
+import string
 from collections.abc import Sequence, Mapping
+
 
 class SQLText:
     __tuple__ = ('_segments',)
@@ -48,7 +50,8 @@ class SQLText:
         raise ValueError("SQL(' ') >> sqlblock")
 
     def _join(self, *sqltexts, sep='', vars):
-        if not sqltexts: return
+        if not sqltexts:
+            return
 
         sql_text_iter = iter(sqltexts)
         sqltext = next(sql_text_iter, None)
@@ -87,7 +90,6 @@ class SQLText:
     def get_statment(self, *, params=None, many_params=None):
         sql_text = ''
 
-
         placeholders = []
 
         var_counter = 0
@@ -116,6 +118,7 @@ class SQLText:
     def __str__(self):
         return f"SQLText({str(self._segments)}])"
 
+
 def eval_param_vals(params, placeholders):
     sql_vals = []
 
@@ -130,10 +133,12 @@ def eval_param_vals(params, placeholders):
         sql_vals += [value]
     return sql_vals
 
+
 class SQLSegmentBase:
     def __init__(self, vars):
-        self.offset = (0, 0) # lineno, charpos at line
+        self.offset = (0, 0)  # lineno, charpos at line
         self.vars = vars   # frame.f_lineno frame.f_code.co_filename
+
 
 class SQLSegment(SQLSegmentBase):
 
@@ -152,6 +157,7 @@ class SQLSegment(SQLSegmentBase):
     def __repr__(self):
         return f"SQLSegment(text='{self.text}', offset={self.offset})"
 
+
 class SQLPlaceholder(SQLSegmentBase):
     def __init__(self, field_name, value, vars):
         super().__init__(vars)
@@ -162,8 +168,9 @@ class SQLPlaceholder(SQLSegmentBase):
         return f"SQLPlaceholder(value='{self.value}', offset={self.offset})"
 
 
-
 _formatter = string.Formatter()
+
+
 def _sqlstr_parse(sqlstr, vars):
     vars = dict(vars)
     segments = []
@@ -186,13 +193,14 @@ def _sqlstr_parse(sqlstr, vars):
 
 
 def SQL(*sqlstrs, sep='', vars=None):
-    
+
     if vars is None:
         vars = sys._getframe(1).f_locals
 
     sqltext = SQLText()
     sqltext._join(*sqlstrs, sep=sep, vars=vars)
-    
+
     return sqltext
+
 
 __all__ = ['SQL']
