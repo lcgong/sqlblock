@@ -12,15 +12,12 @@ from .sqltext import SQLText
 from dataclasses import make_dataclass
 from enum import Enum
 
-class AsyncPGConnection:
+class AsyncPostgresSQL:
     __slots__ = ('_ctxvar', '_pool', '_pool_kwargs')
 
     def __init__(self, dsn=None, min_size=10, max_size=10):
         self._pool_kwargs = dict(dsn=dsn, min_size=min_size, max_size=max_size)
         self._ctxvar = ContextVar('connection')
-
-    def clone(self):
-        return AsyncPGConnection(**self._pool_kwargs)
 
     def transaction(self, *d_args, renew=False, autocommit=False):
         """Decorate the function to access datasbase.

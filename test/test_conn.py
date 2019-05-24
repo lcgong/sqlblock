@@ -2,21 +2,21 @@
 import asyncio
 
 from sqlblock.sqltext import SQL
-from sqlblock.connection import AsyncPGConnection
+from sqlblock.postgres import AsyncPostgresSQL
 
 import pytest
 
 
 @pytest.fixture
 async def conn():
-    conn = AsyncPGConnection(dsn="postgresql://postgres@localhost/test")
+    conn = AsyncPostgresSQL(dsn="postgresql://postgres@localhost/test")
     async with conn:
         yield conn
 
 
 @pytest.mark.asyncio
 async def test_demo(conn):
-    conn = AsyncPGConnection(dsn="postgresql://postgres@localhost/test")
+    conn = AsyncPostgresSQL(dsn="postgresql://postgres@localhost/test")
 
     @conn.transaction
     async def helloworld():

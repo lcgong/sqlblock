@@ -2,9 +2,9 @@
 
 import sys
 
-from sqlblock.connection import AsyncPGConnection
+from sqlblock.postgres import AsyncPostgresSQL
 
-def aiohttp_setup_sqlblock(app, conn: AsyncPGConnection):
+def aiohttp_setup_sqlblock(app, conn: AsyncPostgresSQL):
 
     async def startup(app):
         await conn.__aenter__()

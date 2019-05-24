@@ -6,7 +6,7 @@ _logger = logging.getLogger(__name__)
 import sys
 import asyncpg
 
-from .sqltext import SQLText
+from ..sqltext import SQLText
 from .cursor import RecordCursor
 from .decorator import TransactionDecoratorFactory
 

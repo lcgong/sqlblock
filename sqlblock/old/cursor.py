@@ -4,7 +4,7 @@ import logging
 _logger = logging.getLogger(__name__)
 
 from collections import namedtuple
-from .sqltext import SQLText
+from ..sqltext import SQLText
 
 class RecordCursor:
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from sqlblock.postgres import set_dsn, transaction
+from sqlblock.old.postgres import set_dsn, transaction
 from sqlblock import SQL
 
 # def setup_module(module):
@@ -10,7 +10,7 @@ from sqlblock import SQL
 
 @pytest.fixture(scope='session')
 def setup_dsn():
-    from sqlblock.postgres import set_dsn
+    from sqlblock.old.postgres import set_dsn
 
     set_dsn(dsn='db', url="postgresql://postgres@localhost/test")
 
