@@ -23,6 +23,11 @@ class AsyncPGConnection:
         return AsyncPGConnection(**self._pool_kwargs)
 
     def transaction(self, *d_args, renew=False, autocommit=False):
+        """Decorate the function to access datasbase.
+
+        :param renew: Force the function with a new connection, default is False.
+        :param autocommit: autocommit
+        """
         def _sqlblk_decorator(func):
 
             async def _sqlblock_wrapper(*args, **kwargs):
@@ -75,18 +80,17 @@ class AsyncPGConnection:
 
     async def execute(self, **params):
         sqlblock: SQLBlock = self._ctxvar.get()
-
-        return await sqlblock.execute(**params)
-
-    async def fetch(self, **params):
-        sqlblock: SQLBlock = self._ctxvar.get()
-
         return await sqlblock.fetch(**params)
 
-    async def fetchfirst(self, **params):
-        sqlblock: SQLBlock = self._ctxvar.get()
 
-        return await sqlblock.fetchfirst(**params)
+    def __await__(self):
+        sqlblock: SQLBlock = self._ctxvar.get()
+        return sqlblock.fetch().__await__()
+
+
+    async def first(self, **params):
+        sqlblock: SQLBlock = self._ctxvar.get()
+        return await sqlblock.fetch_first(**params)
 
     def __aiter__(self):
         sqlblock: SQLBlock = self._ctxvar.get()
@@ -98,9 +102,12 @@ class BlockState(Enum):
     EXECUTED    = 1
     EXHAUSTED   = 2
 
+def make_record_type(stmt):
+    return make_dataclass("Rec", [a.name for a in stmt.get_attributes()])
+
 class SQLBlock:
     __slots__ = ('_conn', '_sqltext', '_cursor', '_row_type',
-                 '_state', '_autocommit', '_parent', '_prepared')
+                 '_state', '_autocommit', '_parent', '_statment')
 
     def __init__(self, conn, autocommit=False, parent=None):
         self._conn = conn
@@ -111,60 +118,54 @@ class SQLBlock:
         self._row_type = None
         self._sqltext = SQLText()
         self._state = BlockState.PENDING
-        self._prepared = None
+        self._statment = None
 
     def join(self, sqltext, vars=sys._getframe(1).f_locals):
         if self._state != BlockState.PENDING:
             self._sqltext.clear() ## next a new SQL statement
             self._state = BlockState.PENDING
-            self._prepared = None
+            self._statment = None
 
         self._sqltext._join(sqltext, vars=vars)
 
         return self
 
-    async def fetchfirst(self, **params):
-        """Execute the statement and return the first row.
+    async def fetch_first(self, **params):
+        """Execute the statement and return the first record.
 
         :param params: Query arguments
         :return: The first row as a :class:`Rec` instance.
         """
+        
+        sql_stmt, sql_vals = self._sqltext.get_statment(params=params)
+        if not sql_stmt:
+            return
+
+        stmt = await self._conn.prepare(sql_stmt)
+        record = await stmt.fetchrow(*sql_vals)
+        self._state = BlockState.EXHAUSTED
+        
+        if record is not None:
+            record_type = make_record_type(stmt)
+            return record_type(**record)
+
+    async def fetch(self, **params):
 
         sql_stmt, sql_vals = self._sqltext.get_statment(params=params)
         if not sql_stmt:
             return
 
-        self._state = BlockState.EXECUTED
-        
-        stmt = await self._conn.prepare(sql_stmt)
-        record = await stmt.fetchrow(*sql_vals)
-        if record is None:
-            return None
-
-        _row_type = make_dataclass("Rec",
-                                   [a.name for a in stmt.get_attributes()])
-
-        return _row_type(**record)
-
-    async def fetch(self, **params):
-        if self._prepared is None:
-            sql_stmt, sql_vals = self._sqltext.get_statment(params=params)
-            if not sql_stmt:
-                return _EmptyAsyncIterator()
-
-            stmt = await self._conn.prepare(sql_stmt)
-
-            self._prepared = (stmt, sql_vals)
-        else:
-            stmt, sql_vals = self._prepared
+        conn = self._conn
+        stmt = await conn.prepare(sql_stmt)
 
         if self._autocommit:
             # cursor cannot be created outside of a transaction
             records = await stmt.fetch(*sql_vals)
-            self._cursor = _AsyncIteratorWrapper(records.__iter__())
+            self._cursor = _IteratoAsyncrWrapper(records.__iter__())
         else:
             self._cursor = stmt.cursor(*sql_vals).__aiter__()
 
+        self._statment = stmt
         self._row_type = make_dataclass(
             "Rec", [a.name for a in stmt.get_attributes()])
 
@@ -172,25 +173,8 @@ class SQLBlock:
 
         return self
 
-    async def execute(self, **params):
-        """Execute an SQL command (or commands).
-
-        This method can execute many SQL commands at once, when no arguments
-        are provided.
-
-        :param params: Query arguments.
-        :return str: Status of the last SQL command.
-        """
-
-        sql_stmt, sql_vals = self._sqltext.get_statment(params=params)
-        if not sql_stmt:
-            return
-
-        status = await self._conn.execute(sql_stmt, *sql_vals)
-        
-        self._state = BlockState.EXECUTED
-
-        return status
+    def get_statusmsg(self):
+        return self._statment.get_statusmsg()
 
     def __aiter__(self):
         if self._state == BlockState.EXHAUSTED:
@@ -214,7 +198,7 @@ class SQLBlock:
             raise
 
 
-class _AsyncIteratorWrapper:
+class _IteratoAsyncrWrapper:
     def __init__(self, _iter):
         self._iter = _iter
 
@@ -228,14 +212,6 @@ class _AsyncIteratorWrapper:
             raise StopAsyncIteration
 
 
-class _EmptyAsyncIterator:
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        raise StopAsyncIteration
-
-
 async def _scoped_invoke(ctxvar, block, conn, autocommit, func, args, kwargs):
     try:
         saved_point = ctxvar.set(block)
@@ -247,7 +223,7 @@ async def _scoped_invoke(ctxvar, block, conn, autocommit, func, args, kwargs):
                 await transaction.commit()
                 return ret_val
             except:
-                transaction.rollback()
+                await transaction.rollback()
                 raise
         else:
             return await func(*args, **kwargs)
