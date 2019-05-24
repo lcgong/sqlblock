@@ -155,6 +155,7 @@ class SQLBlock:
         if not sql_stmt:
             return
 
+
         conn = self._conn
         stmt = await conn.prepare(sql_stmt)
 
@@ -163,7 +164,7 @@ class SQLBlock:
             records = await stmt.fetch(*sql_vals)
             self._cursor = _IteratoAsyncrWrapper(records.__iter__())
         else:
-            self._cursor = stmt.cursor(*sql_vals).__aiter__()
+            self._cursor = await _fetch_cursor(stmt, sql_vals)
 
         self._statment = stmt
         self._row_type = make_dataclass(
@@ -197,8 +198,34 @@ class SQLBlock:
             self._row_type = None
             raise
 
+async def _fetch_cursor(stmt, sql_vals):
+    _iter = stmt.cursor(*sql_vals).__aiter__()
+    try:
+        this_one = await _iter.__anext__()
+        return _ThisOneAsyncIterator(_iter, this_one)
+    except StopAsyncIteration:
+        return _EmptyAsyncrIterator()
+
+class _ThisOneAsyncIterator:
+
+    def __init__(self, _iter, this_one):
+        self._iter = _iter
+        self._this_one = this_one
+
+    async def __anext__(self):
+        this_one = self._this_one
+        if this_one is None:
+            raise StopAsyncIteration
+
+        try:
+            self._this_one = await self._iter.__anext__()
+        except StopAsyncIteration:
+            self._this_one = None
+        
+        return this_one
 
 class _IteratoAsyncrWrapper:
+
     def __init__(self, _iter):
         self._iter = _iter
 
@@ -210,6 +237,11 @@ class _IteratoAsyncrWrapper:
             return self._iter.__next__()
         except StopIteration:
             raise StopAsyncIteration
+
+class _EmptyAsyncrIterator:
+
+    async def __anext__(self):
+        raise StopAsyncIteration
 
 
 async def _scoped_invoke(ctxvar, block, conn, autocommit, func, args, kwargs):

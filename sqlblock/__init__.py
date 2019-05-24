@@ -24,3 +24,4 @@ def do_something(self, arg):
 
 from .sqltext import SQL
 from .postgres import set_dsn, transaction
+from .connection import AsyncPGConnection as AsyncPostgresSQL
