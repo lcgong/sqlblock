@@ -11,6 +11,21 @@ class AsyncPostgresSQL:
     __slots__ = ('_ctxvar', '_pool', '_pool_kwargs')
 
     def __init__(self, dsn=None, min_size=10, max_size=10):
+        """
+        Define settings to establish a connection to a PostgreSQL server.
+
+        The connection parameters may be specified either as a connection
+        URI in *dsn*, or as specific keyword arguments, or both.
+        If both *dsn* and keyword arguments are specified, the latter
+        override the corresponding values parsed from the connection URI.
+
+        :param dsn:
+            Connection arguments specified using as a single string in the
+            `[https://www.postgresql.org/docs/current/libpq-connect.html
+            #id-1.7.3.8.3.6](libpq connection URI format)`_:
+            ``postgres://user:password@host:port/database?option=value``.
+
+        """
         self._pool_kwargs = dict(dsn=dsn, min_size=min_size, max_size=max_size)
         self._ctxvar = ContextVar('connection')
 

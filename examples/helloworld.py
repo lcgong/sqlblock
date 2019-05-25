@@ -5,16 +5,10 @@ conn = AsyncPostgresSQL(dsn="postgresql://postgres@localhost/test")
 
 
 @conn.transaction
-async def helloworld():
+async def hello_world():
 
-    SQL("""
-    CREATE TEMPORARY TABLE tmp_tbl (
-        sn INTEGER
-    )
-    """) >> conn
-    await conn
-
-    await init_data()
+    await create_table()
+    await init_data(start_sn=100)
 
     SQL("SELECT * FROM tmp_tbl") >> conn
 
@@ -23,15 +17,22 @@ async def helloworld():
     async for r in conn:
         print(r.sn)
 
+async def create_table():
+    SQL("""
+    CREATE TEMPORARY TABLE tmp_tbl (
+        sn INTEGER
+    )
+    """) >> conn
+    await conn
 
-async def init_data():
+async def init_data(start_sn):
     for i in range(4):
-        SQL("INSERT INTO tmp_tbl (sn) VALUES ({100 + i}) ") >> conn
+        SQL("INSERT INTO tmp_tbl (sn) VALUES ({start_sn + i}) ") >> conn
         await conn
 
 
 async def main():
     async with conn:
-        await helloworld()
+        await hello_world()
 
 asyncio.run(main())
