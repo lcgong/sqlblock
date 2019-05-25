@@ -5,4 +5,4 @@
 """
 
 from .sqltext import SQL
-from .postgres import AsyncPostgresSQL
+from .postgres.connection import AsyncPostgresSQL

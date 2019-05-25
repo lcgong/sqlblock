@@ -2,7 +2,7 @@
 import asyncio
 
 from sqlblock.sqltext import SQL
-from sqlblock.postgres import AsyncPostgresSQL
+from sqlblock.postgres.connection import AsyncPostgresSQL
 
 import pytest
 
