@@ -1,6 +1,3 @@
-#! /usr/bin/python3
-# -*- coding: utf-8 -*-
-
 from distutils.core import setup
 from setuptools import find_packages
 
@@ -17,8 +14,7 @@ class PyTest(TestCommand):
         _test_args = [
             '--verbose',
             '--ignore=build',
-            '--cov=domainics',
-            '--cov-report=term-missing',
+            '--cov=sqlblock',
             '--pep8',
         ]
         extra_args = os.environ.get('PYTEST_EXTRA_ARGS')
@@ -46,8 +42,7 @@ setup(
     packages=find_packages("."),
     # package_dir = {"": "."},
     zip_safe=False,
-    install_requires=["asyncpg>=0.18.3",
-                      ],
+    install_requires=["asyncpg>=0.18.3"],
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",
         "Intended Audience :: Developers",
@@ -69,5 +64,4 @@ setup(
         'pytest-asyncio'
     ],
     cmdclass={'test': PyTest},
-
 )
