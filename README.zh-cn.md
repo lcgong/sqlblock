@@ -1,8 +1,7 @@
 
-[![Build Status](https://travis-ci.org/lcgong/sqlblock.svg?branch=master)](https://travis-ci.org/lcgong/sqlblock)
 
+*其它语言版本: [English](README.md),  [简体中文](README.zh-cn.md).*
 
-*Read this in other languages: [English](README.md),  [简体中文](README.zh-cn.md).*
 
 
 ```python
