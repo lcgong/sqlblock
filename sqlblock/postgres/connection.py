@@ -88,6 +88,9 @@ class AsyncPostgresSQL:
 
     def __await__(self):
         return self._sqlblock.fetch().__await__()
+    
+    async def fetch_first(self, **params):
+        return await self._sqlblock.fetch_first(**params)
 
     async def first(self, **params):
         return await self._sqlblock.fetch_first(**params)
