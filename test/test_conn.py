@@ -15,34 +15,6 @@ async def conn():
 
 
 @pytest.mark.asyncio
-async def test_demo(conn):
-    conn = AsyncPostgresSQL(dsn="postgresql://postgres@localhost/test")
-
-    @conn.transaction
-    async def helloworld():
-
-        SQL("""
-        CREATE TEMPORARY TABLE tmp_tbl (
-            sn INTEGER
-        )
-        """) >> conn
-        await conn
-
-        await init_data()
-
-        SQL("SELECT * FROM tmp_tbl") >> conn
-        assert [r.sn async for r in conn] == [100, 101, 102, 103]
-
-    async def init_data():
-        for i in range(4):
-            SQL("INSERT INTO tmp_tbl (sn) VALUES ({100 + i}) ") >> conn
-            await conn
-
-    async with conn:
-        await helloworld()
-
-
-@pytest.mark.asyncio
 async def test_simple_1(conn):
 
     @conn.transaction

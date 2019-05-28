@@ -2,8 +2,7 @@
 
 import sys
 
-from sqlblock.postgres import AsyncPostgresSQL
-
+from sqlblock.postgres.connection import AsyncPostgresSQL
 
 def aiohttp_setup_sqlblock(app, conn: AsyncPostgresSQL):
 
