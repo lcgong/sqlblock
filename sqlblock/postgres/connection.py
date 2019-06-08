@@ -4,13 +4,26 @@ from functools import update_wrapper as update_func_wrapper
 from inspect import iscoroutinefunction
 from asyncpg import create_pool
 
+from asyncpg.pool import Pool as AsyncPGPool
+
 from ._sqlblock import SQLBlock
+import json
+
+
+async def _init_connection(conn: AsyncPGPool):
+    # TODO 允许自定义类型
+    await conn.set_type_codec(
+        'jsonb',
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema='pg_catalog'
+    )
 
 
 class AsyncPostgresSQL:
     __slots__ = ('_ctxvar', '_pool', '_pool_kwargs')
 
-    def __init__(self, dsn=None, min_size=10, max_size=10):
+    def __init__(self, dsn=None, min_size=10, max_size=10, on_init_conn=None):
         """
         Define settings to establish a connection to a PostgreSQL server.
 
@@ -26,7 +39,13 @@ class AsyncPostgresSQL:
             ``postgres://user:password@host:port/database?option=value``.
 
         """
-        self._pool_kwargs = dict(dsn=dsn, min_size=min_size, max_size=max_size)
+        if on_init_conn:
+            on_init_conn = _init_connection
+
+        self._pool_kwargs = dict(dsn=dsn,
+                                 min_size=min_size,
+                                 max_size=max_size,
+                                 init=on_init_conn)
         self._ctxvar = ContextVar('connection')
 
     def transaction(self, *d_args, renew=False, autocommit=False):
@@ -45,6 +64,7 @@ class AsyncPostgresSQL:
                 if block is None or renew:
                     try:
                         conn = await pool.acquire()
+
                         block = SQLBlock(conn, autocommit=autocommit)
                         return await _scoped_invoke(ctxvar, block,
                                                     conn, autocommit,
@@ -88,7 +108,7 @@ class AsyncPostgresSQL:
 
     def __await__(self):
         return self._sqlblock.fetch().__await__()
-    
+
     async def fetch_first(self, **params):
         return await self._sqlblock.fetch_first(**params)
 
