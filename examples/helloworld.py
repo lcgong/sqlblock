@@ -3,7 +3,6 @@ from sqlblock import AsyncPostgresSQL, SQL
 
 db = AsyncPostgresSQL(dsn="postgresql://postgres@localhost/test")
 
-
 @db.transaction
 async def hello_world():
 

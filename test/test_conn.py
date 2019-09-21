@@ -9,7 +9,7 @@ import pytest
 
 @pytest.fixture
 async def conn():
-    conn = AsyncPostgresSQL(dsn="postgresql://postgres@localhost/test")
+    conn = AsyncPostgresSQL(dsn="postgresql://postgres@localhost/sqlblock_test")
     async with conn:
         yield conn
 
@@ -214,3 +214,32 @@ async def test_dirty_read(conn):
         return (await conn.first()).sn
 
     await func()
+
+
+@pytest.mark.asyncio
+async def test_sql_fragments(conn):
+
+    @conn.transaction
+    async def func(offset, limit):
+
+        sqlf_offset = SQL("OFFSET {offset}" ) if offset is not None else SQL()
+        sqlf_limit  = SQL("LIMIT {limit}" ) if limit is not None else SQL()
+
+        a = 1
+        b = 5
+
+        await conn("""
+        SELECT sn 
+        FROM generate_series({a}::INTEGER, {b}::INTEGER) AS t(sn) 
+        {sqlf_offset}
+        {sqlf_limit}
+        """)
+        nums = [r.sn async for r in conn]
+
+        return nums
+
+    assert await func(0, 1) == [1]
+    assert await func(2, 2) == [3, 4]
+    assert await func(None, 1) == [1]
+    assert await func(None, None) == [1,2,3,4,5]
+

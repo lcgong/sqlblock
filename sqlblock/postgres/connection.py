@@ -59,6 +59,8 @@ class AsyncPostgresSQL:
             async def _sqlblock_wrapper(*args, **kwargs):
                 ctxvar = self._ctxvar
                 pool = self._pool
+                if pool is None:
+                    raise ValueError('pole is none')
 
                 block = ctxvar.get(None)
                 if block is None or renew:
@@ -70,7 +72,8 @@ class AsyncPostgresSQL:
                                                     conn, autocommit,
                                                     func, args, kwargs)
                     finally:
-                        await pool.release(conn)
+                        if pool:
+                            await pool.release(conn)
                 else:
                     conn = block._conn
                     childBlock = SQLBlock(conn, parent=block,

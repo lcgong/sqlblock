@@ -57,3 +57,23 @@ def test_sqltext4():
         s += SQL("[{i+1}]")
     _, vals = s.get_statment()
     assert vals == [2, 3, 4, 5]
+
+
+def test_fragments():
+
+    offset = 0
+    limit = 1
+    
+    sqlf_offset = SQL("OFFSET {offset}" ) if offset is not None else SQL()
+    sqlf_limit  = SQL("LIMIT {limit}" ) if limit is not None else SQL()
+
+    nums = [11, 22]
+
+    sql = SQL("""
+    SELECT sn FROM (VALUES ({nums[0]}), ({nums[1]})) AS t(sn) 
+    {sqlf_offset} {sqlf_limit}
+    """)
+
+    stmt, vals = sql.get_statment()
+
+    print(stmt, vals)
