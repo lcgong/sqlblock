@@ -1,4 +1,5 @@
 import sys
+import asyncio
 from contextvars import ContextVar
 from functools import update_wrapper as update_func_wrapper
 from inspect import iscoroutinefunction
@@ -19,9 +20,76 @@ async def _init_connection(conn: AsyncPGPool):
         schema='pg_catalog'
     )
 
+    
+class Listener:
+
+    def __init__(self, pool):
+        self._pool = pool
+        self._conn = None
+        self._queues = None
+
+        def _callback(pid, channel, payload):
+            print('listened: ', pid, channel, payload)
+            queue = self._queues[channel]
+            queue.put_nowait(payload)
+            
+        self._callback = _callback
+
+        self._lock = asyncio.Lock()
+    
+    async def get(self, channel):
+        if self._conn is None:
+            await self.open()
+
+        if channel not in self._queues:
+            await self.register(channel)
+
+        async with self._lock:
+            queue = self._queues[channel]
+        
+        return await queue.get()
+
+    async def register(self, channel):
+        """ register a channel to listen """
+
+        if channel in self._queues:
+            raise ValueError(f"The channel has been registered: '{channel}'")
+        
+        async with self._lock:
+            await self._conn.add_listener(channel, self._callback)
+            self._queues[channel] = asyncio.Queue()
+            print('registered ', channel)
+    
+    async def unregister(self, channel):
+        """ unregister a channel """
+
+        async with self._lock:
+            await self._conn.remove_listener(channel, self._callback)
+            del self._queues[channel]
+
+    async def open(self):
+        if self._conn is not None:
+            return
+
+        async with self._lock:
+            self._conn = await self._pool.acquire()
+            self._queues = {}
+
+    async def close(self):
+        if self._conn is None:
+            return
+
+        async with self._lock:
+            for channel in list(self._queues.keys()):
+                await self.unregister(channel)
+        
+            await self._pool.release(self._conn)
+            self._queues = None
+            self._conn = None
+
 
 class AsyncPostgresSQL:
-    __slots__ = ('_ctxvar', '_pool', '_pool_kwargs')
+    __slots__ = ('_ctxvar', '_pool', '_pool_kwargs', '_listener')
 
     def __init__(self, dsn=None, min_size=10, max_size=10, on_init_conn=None):
         """
@@ -47,6 +115,8 @@ class AsyncPostgresSQL:
                                  max_size=max_size,
                                  init=on_init_conn)
         self._ctxvar = ContextVar('connection')
+
+        self._listener = None
 
     def transaction(self, *d_args, renew=False, autocommit=False):
         """Decorate the function to access datasbase.
@@ -94,10 +164,17 @@ class AsyncPostgresSQL:
         """ startup the connection pool """
         self._pool = await create_pool(**self._pool_kwargs)
 
+        self._listener = Listener(self._pool)
+
         return self
 
     async def __aexit__(self, etyp, exc_val, tb):
         """ gracefull shutdown the connection pool """
+        
+        if self._listener is not None: 
+            await self._listener.close()
+            self._listener = None
+
         await self._pool.close()
         self._pool = None
 
@@ -131,6 +208,19 @@ class AsyncPostgresSQL:
 
     def __aiter__(self):
         return self._sqlblock.__aiter__()
+
+    async def listen(self, channel):
+        """ listen for Postgres notifications
+        
+        The returned value is the payload of notification
+
+        :param str channel: Channel to listen on.
+        """
+
+        return await self._listener.get(channel)
+
+    async def notify(self, channel, payload):
+        await self._sqlblock._conn.execute("NOTIFY $1 $2", channel, payload)
 
     @property
     def _sqlblock(self) -> SQLBlock:
