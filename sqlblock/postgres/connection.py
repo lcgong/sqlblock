@@ -107,7 +107,7 @@ class AsyncPostgresSQL:
             ``postgres://user:password@host:port/database?option=value``.
 
         """
-        if on_init_conn:
+        if not on_init_conn:
             on_init_conn = _init_connection
 
         self._pool_kwargs = dict(dsn=dsn,
