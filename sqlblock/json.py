@@ -12,9 +12,10 @@ def json_loads(s):
     return json.loads(s)
 
 
-def json_dumps(obj):
-    return json.dumps(obj, cls=EnhancedJSONEncoder)
-
+def json_dumps(obj, ensure_ascii=False):
+    return json.dumps(obj,
+                      cls=EnhancedJSONEncoder, 
+                      ensure_ascii=ensure_ascii)
 
 class EnhancedJSONEncoder(json.JSONEncoder):
     def default(self, obj):  # pylint: disable=E0202

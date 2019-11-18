@@ -8,15 +8,16 @@ from asyncpg import create_pool
 from asyncpg.pool import Pool as AsyncPGPool
 
 from ._sqlblock import SQLBlock
-import json
+
+from sqlblock.json import json_loads, json_dumps
 
 
 async def _init_connection(conn: AsyncPGPool):
     # TODO 允许自定义类型
     await conn.set_type_codec(
         'jsonb',
-        encoder=json.dumps,
-        decoder=json.loads,
+        encoder=json_dumps,
+        decoder=json_loads,
         schema='pg_catalog'
     )
 
