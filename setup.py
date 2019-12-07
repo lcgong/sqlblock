@@ -33,7 +33,7 @@ class PyTest(TestCommand):
 
 setup(
     name='sqlblock',
-    version='0.5.0',
+    version='0.5.1',
     license="BSD",
     description='A sql context',
     author='Chenggong Lyu',
