@@ -190,6 +190,17 @@ class AsyncPostgresSQL:
 
         return self
 
+
+    def sql(self, *sqltexts, **params):
+        if not params:
+            params = _get_ctx_frame(1).f_locals
+
+        sqlblock = self._sqlblock
+        for sqltext in sqltexts:        
+            sqlblock.join(sqltext, vars=params)
+
+        return self
+
     def __lshift__(self, sqltext):
         self._sqlblock.join(sqltext, vars=_get_ctx_frame(1).f_locals)
 
