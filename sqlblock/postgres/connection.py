@@ -21,7 +21,7 @@ async def _init_connection(conn: AsyncPGPool):
         schema='pg_catalog'
     )
 
-    
+
 class Listener:
 
     def __init__(self, pool):
@@ -33,11 +33,11 @@ class Listener:
             print('listened: ', pid, channel, payload)
             queue = self._queues[channel]
             queue.put_nowait(payload)
-            
+
         self._callback = _callback
 
         self._lock = asyncio.Lock()
-    
+
     async def get(self, channel):
         if self._conn is None:
             await self.open()
@@ -47,7 +47,7 @@ class Listener:
 
         async with self._lock:
             queue = self._queues[channel]
-        
+
         return await queue.get()
 
     async def register(self, channel):
@@ -55,12 +55,12 @@ class Listener:
 
         if channel in self._queues:
             raise ValueError(f"The channel has been registered: '{channel}'")
-        
+
         async with self._lock:
             await self._conn.add_listener(channel, self._callback)
             self._queues[channel] = asyncio.Queue()
             print('registered ', channel)
-    
+
     async def unregister(self, channel):
         """ unregister a channel """
 
@@ -83,7 +83,7 @@ class Listener:
         async with self._lock:
             for channel in list(self._queues.keys()):
                 await self.unregister(channel)
-        
+
             await self._pool.release(self._conn)
             self._queues = None
             self._conn = None
@@ -171,32 +171,30 @@ class AsyncPostgresSQL:
 
     async def __aexit__(self, etyp, exc_val, tb):
         """ gracefull shutdown the connection pool """
-        
-        if self._listener is not None: 
+
+        if self._listener is not None:
             await self._listener.close()
             self._listener = None
 
         await self._pool.close()
         self._pool = None
 
-
     def __call__(self, *sqltexts, **params):
         if not params:
             params = _get_ctx_frame(1).f_locals
 
         sqlblock = self._sqlblock
-        for sqltext in sqltexts:        
+        for sqltext in sqltexts:
             sqlblock.join(sqltext, vars=params)
 
         return self
-
 
     def sql(self, *sqltexts, **params):
         if not params:
             params = _get_ctx_frame(1).f_locals
 
         sqlblock = self._sqlblock
-        for sqltext in sqltexts:        
+        for sqltext in sqltexts:
             sqlblock.join(sqltext, vars=params)
 
         return self
@@ -223,7 +221,7 @@ class AsyncPostgresSQL:
 
     async def listen(self, channel):
         """ listen for Postgres notifications
-        
+
         The returned value is the payload of notification
 
         :param str channel: Channel to listen on.
