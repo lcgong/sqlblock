@@ -4,7 +4,7 @@ from contextvars import ContextVar
 from functools import update_wrapper as update_func_wrapper
 from inspect import iscoroutinefunction
 from asyncpg import create_pool
-
+# from asyncpg.pool import Pool
 from asyncpg.pool import Pool as AsyncPGPool
 
 from ._sqlblock import SQLBlock
@@ -163,7 +163,8 @@ class AsyncPostgresSQL:
 
     async def __aenter__(self):
         """ startup the connection pool """
-        self._pool = await create_pool(**self._pool_kwargs)
+        self._pool = create_pool(**self._pool_kwargs)
+        await self._pool.__aenter__()
 
         self._listener = Listener(self._pool)
 
@@ -176,18 +177,18 @@ class AsyncPostgresSQL:
             await self._listener.close()
             self._listener = None
 
-        await self._pool.close()
+        await self._pool.__aexit__()
         self._pool = None
 
-    def __call__(self, *sqltexts, **params):
-        if not params:
-            params = _get_ctx_frame(1).f_locals
+    # def __call__(self, *sqltexts, **params):
+    #     if not params:
+    #         params = _get_ctx_frame(1).f_locals
 
-        sqlblock = self._sqlblock
-        for sqltext in sqltexts:
-            sqlblock.join(sqltext, vars=params)
+    #     sqlblock = self._sqlblock
+    #     for sqltext in sqltexts:
+    #         sqlblock.join(sqltext, vars=params)
 
-        return self
+    #     return self
 
     def sql(self, *sqltexts, **params):
         if not params:

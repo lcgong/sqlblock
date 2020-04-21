@@ -127,9 +127,8 @@ def eval_param_vals(params, placeholders):
         localvars.update(seg.vars)
         if params:
             localvars.update(params)
-
-        value = eval(seg.field_name, None, localvars)
-
+        
+        value = eval_expr(seg.field_name, localvars)
         sql_vals += [value]
     return sql_vals
 
@@ -177,20 +176,26 @@ def _sqlstr_parse(sqlstr, vars):
     for text, field_name, _, _ in _formatter.parse(sqlstr):
         segments.append(SQLSegment(text, vars))
 
-        if field_name:
-            try:
-                val = eval(field_name, None, vars)
-            except NameError as exc:
-                val = exc
+        if not field_name:
+            continue
+        
+        val = eval_expr(field_name, vars)
 
-            if isinstance(val, SQLText):
-                segments += val._segments
-            else:
-                seg = SQLPlaceholder(field_name, val, vars)
-                segments.append(seg)
+        if isinstance(val, SQLText):
+            segments += val._segments
+        else:
+            seg = SQLPlaceholder(field_name, val, vars)
+            segments.append(seg)
 
     return segments
 
+def eval_expr(expr, localvars):
+    try:
+        return eval(expr, None, localvars)
+    except Exception as exc:
+        errmsg = (f"{str(exc)}, while evaluating the expression " 
+                f"'{expr}' with local variables: {localvars}")
+        raise type(exc)(errmsg)
 
 def SQL(*sqlstrs, sep='', vars=None):
 
