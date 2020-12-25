@@ -7,7 +7,7 @@
 
 ```python
 import asyncio
-from sqlblock import AsyncPostgresSQL, SQL
+from sqlblock import AsyncPostgresSQL
 
 conn = AsyncPostgresSQL(dsn="postgresql://postgres@localhost/test")
 
@@ -17,7 +17,7 @@ async def hello_world():
     await create_table()
     await init_data(start_sn=100)
 
-    SQL("SELECT * FROM tmp_tbl") >> conn
+    conn.sql("SELECT * FROM tmp_tbl")
 
     assert [r.sn async for r in conn] == [100, 101, 102, 103]
 
@@ -25,23 +25,19 @@ async def hello_world():
         print(r.sn)
 
 async def create_table():
-    SQL("""
+    await conn.sql("""
     CREATE TEMPORARY TABLE tmp_tbl (
         sn INTEGER
     )
-    """) >> conn
-    await conn
+    """)
 
 async def init_data(start_sn):
     for i in range(4):
-        SQL("INSERT INTO tmp_tbl (sn) VALUES ({start_sn + i}) ") >> conn
-        await conn
-
+        await conn.sql("INSERT INTO tmp_tbl (sn) VALUES ({start_sn + i}) ")
 
 async def main():
     async with conn:
         await hello_world()
 
 asyncio.run(main())
-
 ```
