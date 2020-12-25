@@ -27,28 +27,26 @@ def test_sqltext():
     stmt, vals = s0.get_statment()
     assert stmt == '[$1]' and vals == [28]
 
-
-def test_sqltext2():
-    a, b = 1, 2
-
-    t = SQL("{g}{g+1}")
-    s = SQL("{a}{b}{c}[{t}]")
-    with pytest.raises(NameError):
-        stmt, vals = s.get_statment()
-
-    stmt, vals = s.get_statment(params=dict(b=10, c=20, g=30))
-    assert stmt == '$1$2$3[$4$5]'
-
-    assert vals[4] == 31
-
-    print(stmt, vals)
+"""
+TODO: 安全、简单明了起见，不在使用后期参数替代，完全使用上下文中的变量
+"""
+# def test_sqltext2():
+#     a, b = 1, 2
+#     t = SQL("{g}{g+1}")
+#     s = SQL("{a}{b}{c}[{t}]")
+#     with pytest.raises(NameError):
+#         stmt, vals = s.get_statment()
+#     stmt, vals = s.get_statment(params=dict(b=10, c=20, g=30))
+#     assert stmt == '$1$2$3[$4$5]'
+#     assert vals[4] == 31
+#     print(stmt, vals)
 
 
-def test_sqltext3():
-    s0 = SQL('[{age}]', vars=dict(age=18))
-    s0 += SQL('[{b}]', vars=dict(b=100))
-    stmt, vals = s0.get_statment()
-    assert stmt == '[$1][$2]' and vals == [18, 100]
+# def test_sqltext3():
+#     s0 = SQL('[{age}]', vars=dict(age=18))
+#     s0 += SQL('[{b}]', vars=dict(b=100))
+#     stmt, vals = s0.get_statment()
+#     assert stmt == '[$1][$2]' and vals == [18, 100]
 
 
 def test_sqltext4():
