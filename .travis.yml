@@ -1,15 +1,16 @@
 language: python
-dist: xenial
+dist:
+  - focal
+
 python:
   - "3.8"
-  - "3.9"
 
 services:
   - postgresql
 
 addons:
   postgresql: 
-    - "10"
+    - "11"
 
 install:
     - pip install .
@@ -17,4 +18,4 @@ install:
 script: py.test -sv
 
 before_script:
-  - psql -c "CREATE DATABASE test  WITH ENCODING='UTF8'" -U postgres
+  - psql -c "CREATE DATABASE test WITH ENCODING='UTF8'" -U postgres -h localhost
