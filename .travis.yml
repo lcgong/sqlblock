@@ -8,9 +8,6 @@ python:
 services:
   - postgresql
 
-addons:
-  postgresql: 
-    - "11"
 
 install:
     - pip install .
