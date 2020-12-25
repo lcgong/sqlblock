@@ -15,4 +15,4 @@ install:
 script: py.test -sv
 
 before_script:
-  - psql -c "CREATE DATABASE test WITH ENCODING='UTF8'" -U postgres -h localhost
+  - psql -c "CREATE DATABASE test WITH ENCODING='UTF8'" -U postgres
