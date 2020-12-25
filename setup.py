@@ -33,7 +33,7 @@ class PyTest(TestCommand):
 
 setup(
     name='sqlblock',
-    version='0.5.1',
+    version='0.6.0',
     license="BSD",
     description='A sql context',
     author='Chenggong Lyu',
@@ -42,7 +42,7 @@ setup(
     packages=find_packages("."),
     # package_dir = {"": "."},
     zip_safe=False,
-    install_requires=["asyncpg>=0.18.3"],
+    install_requires=["asyncpg>=0.21.0"],
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",
         "Intended Audience :: Developers",
