@@ -33,9 +33,9 @@ class PyTest(TestCommand):
 
 setup(
     name='sqlblock',
-    version='0.6.0',
+    version='0.6.1',
     license="BSD",
-    description='A sql context',
+    description='A sql block',
     author='Chenggong Lyu',
     author_email='lcgong@gmail.com',
     url='https://github.com/lcgong/sqlblock',
@@ -53,6 +53,7 @@ setup(
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: Implementation :: CPython",
         "Topic :: Utilities",
     ],
