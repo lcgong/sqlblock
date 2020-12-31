@@ -9,7 +9,7 @@ from asyncpg.pool import Pool as AsyncPGPool
 
 from ._sqlblock import SQLBlock
 
-from sqlblock.json import json_loads, json_dumps
+from sqlblock.utils import json_loads, json_dumps
 
 
 async def _init_connection(conn: AsyncPGPool):

@@ -1,5 +1,4 @@
-from distutils.core import setup
-from setuptools import find_packages
+from setuptools import find_packages, setup
 
 import os
 import sys
@@ -33,7 +32,7 @@ class PyTest(TestCommand):
 
 setup(
     name='sqlblock',
-    version='0.6.2',
+    version='0.6.4',
     license="BSD",
     description='A sql block',
     author='Chenggong Lyu',
