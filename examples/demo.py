@@ -1,7 +1,7 @@
 import asyncio
 from sqlblock import AsyncPostgresSQL
 
-dbconn = AsyncPostgresSQL(dsn="postgresql://postgres@localhost/postgres")
+dbconn = AsyncPostgresSQL(dsn="postgresql://postgres@localhost222/postgres")
 
 @dbconn.transaction
 async def hello_world():

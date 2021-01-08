@@ -10,6 +10,7 @@ from asyncpg import create_pool
 # from asyncpg.pool import Pool
 from asyncpg.pool import Pool as AsyncPGPool
 import asyncpg.exceptions
+import socket
 
 from ._sqlblock import SQLBlock
 
@@ -132,6 +133,8 @@ class LazyConnectionPool(asyncpg.pool.Pool):
             _logger.warn(f"{exc}")
         except asyncpg.exceptions.InvalidPasswordError as exc:
             _logger.warn(f"{exc}")
+        except socket.gaierror as exc:
+            _logger.warn(f"{exc} for host address: {self._connect_args[0]}")
         except:
             raise
 
@@ -146,7 +149,8 @@ class LazyConnectionPool(asyncpg.pool.Pool):
             _logger.warn(f"{exc}")
         except asyncpg.exceptions.InvalidPasswordError as exc:
             _logger.warn(f"{exc}")
-
+        except socket.gaierror as exc:
+            _logger.warn(f"{exc} for host address: {self._connect_args[0]}")
         except:
             raise
 
