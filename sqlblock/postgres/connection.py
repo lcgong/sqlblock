@@ -1,3 +1,6 @@
+import asyncpg.protocol
+import asyncpg.connection
+import asyncpg.pool
 import sys
 import asyncio
 from contextvars import ContextVar
@@ -6,10 +9,14 @@ from inspect import iscoroutinefunction
 from asyncpg import create_pool
 # from asyncpg.pool import Pool
 from asyncpg.pool import Pool as AsyncPGPool
+import asyncpg.exceptions
 
 from ._sqlblock import SQLBlock
 
 from sqlblock.utils import json_loads, json_dumps
+
+import logging
+_logger = logging.getLogger("sqlblock")
 
 
 async def _init_connection(conn: AsyncPGPool):
@@ -89,6 +96,66 @@ class Listener:
             self._conn = None
 
 
+class UnavailableConnectionException(Exception):
+    pass
+
+
+class LazyConnectionPool(asyncpg.pool.Pool):
+    def __init__(self, dsn=None, *,
+                 min_size=10,
+                 max_size=10,
+                 max_queries=50000,
+                 max_inactive_connection_lifetime=300.0,
+                 setup=None,
+                 init=None,
+                 loop=None,
+                 connection_class=asyncpg.connection.Connection,
+                 #  record_class=asyncpg.protocol.Record,
+                 **connect_kwargs):
+
+        super().__init__(
+            dsn,
+            connection_class=connection_class,
+            # record_class=record_class,
+            min_size=min_size, max_size=max_size,
+            max_queries=max_queries, loop=loop, setup=setup, init=init,
+            max_inactive_connection_lifetime=max_inactive_connection_lifetime,
+            **connect_kwargs
+        )
+
+    async def __aenter__(self):
+        try:
+            await self._async__init__()
+        except ConnectionRefusedError as exc:
+            _logger.warn(f"refused database connection: {exc}")
+        except asyncpg.exceptions.InvalidCatalogNameError as exc:
+            _logger.warn(f"{exc}")
+        except asyncpg.exceptions.InvalidPasswordError as exc:
+            _logger.warn(f"{exc}")
+        except:
+            raise
+
+        return self
+
+    async def acquire(self, *, timeout=None):
+        try:
+            return await super().acquire(timeout=timeout)
+        except ConnectionRefusedError as exc:
+            _logger.warn(f"refused database connection: {exc}")
+        except asyncpg.exceptions.InvalidCatalogNameError as exc:
+            _logger.warn(f"{exc}")
+        except asyncpg.exceptions.InvalidPasswordError as exc:
+            _logger.warn(f"{exc}")
+
+        except:
+            raise
+
+        return None
+
+    async def __aexit__(self, *exc):
+        await self.close()
+
+
 class AsyncPostgresSQL:
     __slots__ = ('_ctxvar', '_pool', '_pool_kwargs', '_listener')
 
@@ -131,19 +198,25 @@ class AsyncPostgresSQL:
                 ctxvar = self._ctxvar
                 pool = self._pool
                 if pool is None:
-                    raise ValueError('pole is none')
+                    raise ValueError('pool is none')
 
                 block = ctxvar.get(None)
                 if block is None or renew:
+                    conn = None
                     try:
                         conn = await pool.acquire()
+                        if conn is None:
+                            conn_dsn = self._pool_kwargs.get("dsn")
+                            errmsg = (f"unavailable connection '{conn_dsn}' "
+                                      f"to invoke sql block '{func.__module__}.{func.__name__}'")
+                            raise UnavailableConnectionException(errmsg)
 
                         block = SQLBlock(conn, autocommit=autocommit)
                         return await _scoped_invoke(ctxvar, block,
                                                     conn, autocommit,
                                                     func, args, kwargs)
                     finally:
-                        if pool:
+                        if pool and conn:
                             await pool.release(conn)
                 else:
                     conn = block._conn
@@ -163,7 +236,8 @@ class AsyncPostgresSQL:
 
     async def __aenter__(self):
         """ startup the connection pool """
-        self._pool = create_pool(**self._pool_kwargs)
+        self._pool = LazyConnectionPool(**self._pool_kwargs)
+        # self._pool = create_pool(**self._pool_kwargs)
         await self._pool.__aenter__()
 
         self._listener = Listener(self._pool)

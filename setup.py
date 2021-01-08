@@ -32,7 +32,7 @@ class PyTest(TestCommand):
 
 setup(
     name='sqlblock',
-    version='0.6.4',
+    version='0.6.5',
     license="BSD",
     description='A sql block',
     author='Chenggong Lyu',
